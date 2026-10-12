@@ -5,7 +5,7 @@ import { tasks } from '@/lib/tasks';
 
 const today = new Date().toISOString().slice(0, 10);
 
-type Result = { ok: boolean; id?: string; message?: string; errors?: unknown };
+type Result = { ok: boolean; id?: string; message?: string; errors?: unknown; sheet_sync?: 'disabled' | 'synced' | 'pending' };
 
 export function ResultForm() {
   const [taskCode, setTaskCode] = useState<string>(tasks[0]?.code ?? '');
@@ -76,6 +76,7 @@ export function ResultForm() {
       final_decision: form.get('final_decision'),
     };
 
+    try {
     const res = await fetch('/api/submissions', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -85,13 +86,17 @@ export function ResultForm() {
     setPending(false);
     setResult(data);
     if (data.ok) e.currentTarget.reset();
+    } catch {
+      setPending(false);
+      setResult({ ok: false, message: '서버 연결 실패. 잠시 후 다시 시도하세요.' });
+    }
   }
 
   return (
     <form onSubmit={submit}>
       {result && (
         <div className={`status ${result.ok ? '' : 'error'}`}>
-          {result.ok ? <>저장 완료. 접수번호: <b>{result.id}</b></> : <>저장 실패: {result.message}</>}
+          {result.ok ? <>Supabase 저장 완료. 접수번호: <b>{result.id}</b><div>{result.sheet_sync === 'synced' ? 'Google Sheets 자동 취합 확인됨' : result.sheet_sync === 'disabled' ? 'Google Sheets 자동 취합 비활성화: 환경변수 확인 필요' : 'Google Sheets 자동 취합 미확인: 관리자 점검 필요'}</div></> : <>저장 실패: {result.message}</>}
         </div>
       )}
 
