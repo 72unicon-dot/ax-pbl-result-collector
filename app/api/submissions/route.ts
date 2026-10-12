@@ -31,10 +31,11 @@ export async function POST(req: NextRequest) {
     if (sheetUrl && sheetSecret) {
       sheetSync = 'pending';
       try {
-        const parsedUrl = new URL(sheetUrl);
+        const cleanUrl = sheetUrl.trim().replace(/^['\"]|['\"]$/g, '').trim();
+        const parsedUrl = new URL(cleanUrl);
         if (parsedUrl.protocol !== 'https:' || parsedUrl.hostname !== 'script.google.com' ||
             !parsedUrl.pathname.startsWith('/macros/s/')) throw new Error('Invalid Google Apps Script URL');
-        const response = await fetch(sheetUrl, {
+        const response = await fetch(parsedUrl.toString(), {
           method: 'POST',
           redirect: 'follow',
           headers: { 'Content-Type': 'application/json' },
@@ -55,7 +56,10 @@ export async function POST(req: NextRequest) {
         }
       } catch (err) {
         const name = err instanceof Error ? err.name : 'UnknownError';
-        console.error('[sheets-sync] request failed', name);
+        const reason = err instanceof Error && err.message === 'Invalid Google Apps Script URL'
+          ? 'invalid-webhook-url'
+          : err instanceof Error && err.message.includes('JSON') ? 'invalid-webhook-response' : name;
+        console.error('[sheets-sync] request failed', reason);
         // Leave the saved submission in Supabase; never fail the user's submission.
       }
     }
