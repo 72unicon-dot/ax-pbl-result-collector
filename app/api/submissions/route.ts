@@ -49,7 +49,10 @@ export async function POST(req: NextRequest) {
             sheetSync = 'synced';
             console.info('[sheets-sync] completed');
           } else {
-            console.warn('[sheets-sync] Apps Script returned unsuccessful result');
+            const allowedReasons = ['not configured', 'unauthorized', 'invalid id', 'write failed'];
+            const errorReason = typeof (result as {message?:unknown}).message === 'string' && allowedReasons.includes((result as {message:string}).message)
+              ? (result as {message:string}).message : 'unknown script response';
+            console.warn('[sheets-sync] Apps Script unsuccessful:', errorReason);
           }
         } else {
           console.warn('[sheets-sync] Apps Script HTTP status', response.status);
