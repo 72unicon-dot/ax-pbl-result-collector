@@ -25,6 +25,9 @@ export async function POST(req: NextRequest) {
     const sheetUrl = process.env.GOOGLE_SHEETS_WEBHOOK_URL;
     const sheetSecret = process.env.GOOGLE_SHEETS_WEBHOOK_SECRET;
     let sheetSync: 'disabled' | 'synced' | 'pending' = 'disabled';
+    if (!sheetUrl || !sheetSecret) {
+      console.warn('[sheets-sync] disabled: missing production configuration');
+    }
     if (sheetUrl && sheetSecret) {
       sheetSync = 'pending';
       try {
@@ -41,9 +44,18 @@ export async function POST(req: NextRequest) {
         if (response.ok) {
           const text = await response.text();
           const result = JSON.parse(text) as { ok?: boolean };
-          if (result.ok === true) sheetSync = 'synced';
+          if (result.ok === true) {
+            sheetSync = 'synced';
+            console.info('[sheets-sync] completed');
+          } else {
+            console.warn('[sheets-sync] Apps Script returned unsuccessful result');
+          }
+        } else {
+          console.warn('[sheets-sync] Apps Script HTTP status', response.status);
         }
-      } catch {
+      } catch (err) {
+        const name = err instanceof Error ? err.name : 'UnknownError';
+        console.error('[sheets-sync] request failed', name);
         // Leave the saved submission in Supabase; never fail the user's submission.
       }
     }
