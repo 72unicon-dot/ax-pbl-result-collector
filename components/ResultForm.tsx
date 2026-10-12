@@ -8,7 +8,7 @@ const today = new Date().toISOString().slice(0, 10);
 type Result = { ok: boolean; id?: string; message?: string; errors?: unknown };
 
 export function ResultForm() {
-  const [taskCode, setTaskCode] = useState(tasks[0]?.code ?? '');
+  const [taskCode, setTaskCode] = useState<string>(tasks[0]?.code ?? '');
   const selectedTask = useMemo(() => tasks.find(t => t.code === taskCode) ?? tasks[0], [taskCode]);
   const [result, setResult] = useState<Result | null>(null);
   const [pending, setPending] = useState(false);
