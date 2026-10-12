@@ -1,14 +1,9 @@
-/**
- * Google Sheets Apps Script Webhook
- * 1) Google Sheet 생성
- * 2) 확장 프로그램 → Apps Script
- * 3) 이 파일 붙여넣기
- * 4) SHEET_NAME, WEBHOOK_SECRET 수정
- * 5) 배포 → 웹 앱 → 액세스 권한: 모든 사용자
+/** AX-PBL Google Sheets receiver. Set Script Properties:
+ * SPREADSHEET_ID = the target Google spreadsheet ID
+ * WEBHOOK_SECRET = long random secret shared only with Vercel
+ * Deploy as a Web App: Execute as me; access Anyone (secret required).
  */
 const SHEET_NAME = 'AX_PBL_결과취합';
-const WEBHOOK_SECRET = 'change-me';
-
 const HEADERS = [
   'id','created_at','task_code','task_name','department','writer_name','written_date','process_owner',
   'business_purpose','current_usage','target_users','related_systems','major_input_data','major_outputs',
@@ -20,36 +15,48 @@ const HEADERS = [
   'problems','additional_requests','verification_items','next_step',
   'business_effect_level','reusability_level','integration_priority','final_decision'
 ];
-
 function doPost(e) {
   try {
-    const secret = e?.parameter?.secret || e?.headers?.['x-webhook-secret'] || '';
-    // Apps Script는 커스텀 헤더 접근이 제한될 수 있으므로 URL ?secret= 방식도 허용합니다.
-    if (WEBHOOK_SECRET && secret && secret !== WEBHOOK_SECRET) {
-      return json({ ok:false, message:'invalid secret' });
+    const props = PropertiesService.getScriptProperties();
+    const expected = props.getProperty('WEBHOOK_SECRET');
+    const spreadsheetId = props.getProperty('SPREADSHEET_ID');
+    if (!expected || !spreadsheetId) return json({ok:false, message:'not configured'});
+    const payload = JSON.parse((e && e.postData && e.postData.contents) || '{}');
+    if (typeof payload.secret !== 'string' || payload.secret !== expected) {
+      return json({ok:false, message:'unauthorized'});
     }
-
-    const payload = JSON.parse(e.postData.contents);
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    let sheet = ss.getSheetByName(SHEET_NAME);
-    if (!sheet) sheet = ss.insertSheet(SHEET_NAME);
-
-    if (sheet.getLastRow() === 0) {
-      sheet.appendRow(HEADERS);
-      sheet.getRange(1, 1, 1, HEADERS.length).setFontWeight('bold').setBackground('#dbeafe');
-      sheet.setFrozenRows(1);
+    if (typeof payload.id !== 'string' || !/^[0-9a-f-]{36}$/i.test(payload.id)) {
+      return json({ok:false, message:'invalid id'});
     }
-
-    const row = HEADERS.map(h => payload[h] ?? '');
-    sheet.appendRow(row);
-    return json({ ok:true });
+    const lock = LockService.getScriptLock();
+    lock.waitLock(20000);
+    try {
+      const ss = SpreadsheetApp.openById(spreadsheetId);
+      const sh = ss.getSheetByName(SHEET_NAME) || ss.insertSheet(SHEET_NAME);
+      if (sh.getLastRow() < 1) {
+        sh.appendRow(HEADERS);
+        sh.setFrozenRows(1);
+      }
+      // Prevent duplicates when Vercel retries a request.
+      const existing = sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow() - 1, 1)
+        .createTextFinder(payload.id).matchEntireCell(true).findNext() : null;
+      if (existing) return json({ok:true, duplicate:true});
+      const safe = v => {
+        if (v === null || v === undefined) return '';
+        if (typeof v === 'boolean' || typeof v === 'number') return v;
+        let s = String(v).slice(0, 30000);
+        if (/^[=+@\-\t\r]/.test(s)) s = "'" + s; // prevent formula injection
+        return s;
+      };
+      sh.appendRow(HEADERS.map(h => safe(payload[h])));
+      return json({ok:true});
+    } finally { lock.releaseLock(); }
   } catch (err) {
-    return json({ ok:false, message:String(err) });
+    console.error(err);
+    return json({ok:false, message:'write failed'});
   }
 }
-
 function json(obj) {
-  return ContentService
-    .createTextOutput(JSON.stringify(obj))
+  return ContentService.createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
 }
