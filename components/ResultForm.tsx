@@ -15,6 +15,7 @@ export function ResultForm() {
 
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    const formElement = e.currentTarget;
     setPending(true);
     setResult(null);
     const form = new FormData(e.currentTarget);
@@ -85,7 +86,7 @@ export function ResultForm() {
     const data = await res.json();
     setPending(false);
     setResult(data);
-    if (data.ok) e.currentTarget.reset();
+    if (data.ok) formElement.reset();
     } catch {
       setPending(false);
       setResult({ ok: false, message: '서버 연결 실패. 잠시 후 다시 시도하세요.' });
@@ -93,7 +94,10 @@ export function ResultForm() {
   }
 
   return (
-    <form onSubmit={submit}>
+    <form onSubmit={submit} onInvalidCapture={(e) => {
+      const element = e.target as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+      setResult({ ok: false, message: `필수 입력값을 확인하세요: ${element.getAttribute('name') || '입력 항목'}` });
+    }}>
       {result && (
         <div className={`status ${result.ok ? '' : 'error'}`}>
           {result.ok ? <>Supabase 저장 완료. 접수번호: <b>{result.id}</b><div>{result.sheet_sync === 'synced' ? 'Google Sheets 자동 취합 확인됨' : result.sheet_sync === 'disabled' ? 'Google Sheets 자동 취합 비활성화: 환경변수 확인 필요' : 'Google Sheets 자동 취합 미확인: 관리자 점검 필요'}</div></> : <>저장 실패: {result.message}</>}
@@ -205,6 +209,7 @@ export function ResultForm() {
       </section>
 
       <div className="actions">
+        {result && <div role="status" aria-live="polite" className={`status ${result.ok ? '' : 'error'}`}>{result.ok ? `Supabase 저장 완료 · Google Sheets ${result.sheet_sync === 'synced' ? '취합 완료' : '취합 미확인'}` : result.message}</div>}
         <span className="notice">로그인 없이 누구나 작성 가능하지만, 운영 전에는 스팸 방지·회사망 제한·민감정보 입력금지 안내를 권장합니다.</span>
         <button disabled={pending}>{pending ? '저장 중...' : 'Supabase 저장 + Google Sheet 취합'}</button>
       </div>
